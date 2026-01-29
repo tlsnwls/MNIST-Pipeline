@@ -1,0 +1,256 @@
+# PIPELINE DEFINITION
+# Name: fixed-mnist-pipeline
+# Inputs:
+#    epochs: int [Default: 5.0]
+components:
+  comp-evaluate-model:
+    executorLabel: exec-evaluate-model
+    inputDefinitions:
+      artifacts:
+        model_file:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+        x_test_path:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        y_test_path:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: NUMBER_DOUBLE
+  comp-preprocess-data:
+    executorLabel: exec-preprocess-data
+    outputDefinitions:
+      artifacts:
+        x_test_path:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        x_train_path:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        y_test_path:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        y_train_path:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+  comp-train-model:
+    executorLabel: exec-train-model
+    inputDefinitions:
+      artifacts:
+        x_train_path:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        y_train_path:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+      parameters:
+        epochs:
+          parameterType: NUMBER_INTEGER
+    outputDefinitions:
+      artifacts:
+        model_file:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+deploymentSpec:
+  executors:
+    exec-evaluate-model:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - evaluate_model
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'numpy' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef evaluate_model(\n    x_test_path: dsl.InputPath(\"Numpy\"),\n\
+          \    y_test_path: dsl.InputPath(\"Numpy\"),\n    model_file: dsl.InputPath(\"\
+          Model\")\n) -> float:\n    import tensorflow as tf\n    import numpy as\
+          \ np\n\n    with open(x_test_path, 'rb') as f: x_test = np.load(f)\n   \
+          \ with open(y_test_path, 'rb') as f: y_test = np.load(f)\n\n    # \uC800\
+          \uC7A5\uB41C \uBAA8\uB378 \uBD88\uB7EC\uC624\uAE30 (\uD3F4\uB354 \uD615\uC2DD\
+          \ \uC790\uB3D9 \uC778\uC2DD)\n    model = tf.keras.models.load_model(model_file)\n\
+          \n    loss, accuracy = model.evaluate(x_test, y_test)\n    print(f\"\uCD5C\
+          \uC885 \uD14C\uC2A4\uD2B8 \uC815\uD655\uB3C4: {accuracy}\")\n\n    return\
+          \ float(accuracy)\n\n"
+        image: tensorflow/tensorflow:2.11.0
+    exec-preprocess-data:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - preprocess_data
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'tensorflow'\
+          \ 'numpy' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef preprocess_data(\n    x_train_path: dsl.OutputPath(\"Numpy\"\
+          ),\n    y_train_path: dsl.OutputPath(\"Numpy\"),\n    x_test_path: dsl.OutputPath(\"\
+          Numpy\"),\n    y_test_path: dsl.OutputPath(\"Numpy\")\n):\n    import tensorflow\
+          \ as tf\n    import numpy as np\n\n    print(\"Step 1: \uB370\uC774\uD130\
+          \ \uB2E4\uC6B4\uB85C\uB4DC \uBC0F \uC804\uCC98\uB9AC...\")\n    mnist =\
+          \ tf.keras.datasets.mnist\n    (x_train, y_train), (x_test, y_test) = mnist.load_data()\n\
+          \n    x_train, x_test = x_train / 255.0, x_test / 255.0\n\n    with open(x_train_path,\
+          \ 'wb') as f: np.save(f, x_train)\n    with open(y_train_path, 'wb') as\
+          \ f: np.save(f, y_train)\n    with open(x_test_path, 'wb') as f: np.save(f,\
+          \ x_test)\n    with open(y_test_path, 'wb') as f: np.save(f, y_test)\n \
+          \   print(\"\uC804\uCC98\uB9AC \uC644\uB8CC!\")\n\n"
+        image: python:3.9
+    exec-train-model:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - train_model
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'numpy' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef train_model(\n    x_train_path: dsl.InputPath(\"Numpy\"),\n \
+          \   y_train_path: dsl.InputPath(\"Numpy\"),\n    epochs: int,\n    model_file:\
+          \ dsl.OutputPath(\"Model\") # \uD655\uC7A5\uC790 \uC5C6\uB294 \uACBD\uB85C\
+          \n):\n    import tensorflow as tf\n    import numpy as np\n\n    # \uB370\
+          \uC774\uD130 \uB85C\uB4DC\n    with open(x_train_path, 'rb') as f: x_train\
+          \ = np.load(f)\n    with open(y_train_path, 'rb') as f: y_train = np.load(f)\n\
+          \n    model = tf.keras.models.Sequential([\n        tf.keras.layers.Flatten(input_shape=(28,\
+          \ 28)),\n        tf.keras.layers.Dense(128, activation='relu'),\n      \
+          \  tf.keras.layers.Dropout(0.2),\n        tf.keras.layers.Dense(10, activation='softmax')\n\
+          \    ])\n\n    model.compile(optimizer='adam',\n                  loss='sparse_categorical_crossentropy',\n\
+          \                  metrics=['accuracy'])\n\n    model.fit(x_train, y_train,\
+          \ epochs=epochs)\n\n    # [\uD575\uC2EC] TF 2.11 \uBC84\uC804\uC740 \uD655\
+          \uC7A5\uC790\uAC00 \uC5C6\uC73C\uBA74 \uC790\uB3D9\uC73C\uB85C 'SavedModel(\uD3F4\
+          \uB354)' \uBC29\uC2DD\uC73C\uB85C \uC800\uC7A5\uD574\uC90D\uB2C8\uB2E4.\n\
+          \    # \uCD5C\uC2E0 \uBC84\uC804\uCC98\uB7FC \uAE4C\uB2E4\uB86D\uAC8C \uAD74\
+          \uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.\n    model.save(model_file) \n    print(\"\
+          \uD559\uC2B5 \uBC0F \uC800\uC7A5 \uC644\uB8CC!\")\n\n"
+        image: tensorflow/tensorflow:2.11.0
+pipelineInfo:
+  name: fixed-mnist-pipeline
+root:
+  dag:
+    tasks:
+      evaluate-model:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-evaluate-model
+        dependentTasks:
+        - preprocess-data
+        - train-model
+        inputs:
+          artifacts:
+            model_file:
+              taskOutputArtifact:
+                outputArtifactKey: model_file
+                producerTask: train-model
+            x_test_path:
+              taskOutputArtifact:
+                outputArtifactKey: x_test_path
+                producerTask: preprocess-data
+            y_test_path:
+              taskOutputArtifact:
+                outputArtifactKey: y_test_path
+                producerTask: preprocess-data
+        taskInfo:
+          name: evaluate-model
+      preprocess-data:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-preprocess-data
+        taskInfo:
+          name: preprocess-data
+      train-model:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-train-model
+        dependentTasks:
+        - preprocess-data
+        inputs:
+          artifacts:
+            x_train_path:
+              taskOutputArtifact:
+                outputArtifactKey: x_train_path
+                producerTask: preprocess-data
+            y_train_path:
+              taskOutputArtifact:
+                outputArtifactKey: y_train_path
+                producerTask: preprocess-data
+          parameters:
+            epochs:
+              componentInputParameter: epochs
+        taskInfo:
+          name: train-model
+  inputDefinitions:
+    parameters:
+      epochs:
+        defaultValue: 5.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.7.0
