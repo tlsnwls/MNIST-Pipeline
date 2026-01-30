@@ -66,7 +66,7 @@ def train_model(
     x_train_path: dsl.InputPath("Numpy"),
     y_train_path: dsl.InputPath("Numpy"),
     epochs: int,
-    model_file: dsl.OutputPath("Model") # 확장자 없는 경로
+    model_file: dsl.OutputPath("Model")
 ):
     """
     Key steps to perform training and create a model.
@@ -84,25 +84,41 @@ def train_model(
     import tensorflow as tf
     import numpy as np
 
-    # 데이터 로드
+    # Data load
     with open(x_train_path, 'rb') as f: x_train = np.load(f)
     with open(y_train_path, 'rb') as f: y_train = np.load(f)
 
+    """
+    Flatten:
+    - Input: A two-dimensional array of 28 pixels wide and 28 pixels high (image). 
+    - Action: This is flattened into a one-dimensional vector with 784 (2828) values. Becuase Dense layer can only receive one-dimensional data. 
+    
+    Dense: All 784 input values ​​and 128 neurons are fully connected. Internally, matrix mulitplication(Y=WX+b) occurs.
+    - activation='relu': This function adds nonlinearity to the results of linear operations.
+    
+    Dropout: 
+    - Action: During the learning process, 20% of the neurons are randomly disabled (set to 0).
+    - Purpose: Increases model versatility by preventing overfitting (reliance on specific neurons)
+    
+    Dense(10): Ultimately, need to guess one of the number from 0 to 9, there are 10 output neurons.
+    - activation='softmax': Convert 10 output values ​​to probability values ​​(total 1.0)  
+    """
+    # Deep learning models are built by stacking 'layers' one after another.
     model = tf.keras.models.Sequential([
-        tf.keras.layers.Flatten(input_shape=(28, 28)), # 
+        tf.keras.layers.Flatten(input_shape=(28, 28)), 
         tf.keras.layers.Dense(128, activation='relu'),
         tf.keras.layers.Dropout(0.2),
         tf.keras.layers.Dense(10, activation='softmax')
     ])
 
-    model.compile(optimizer='adam',
-                  loss='sparse_categorical_crossentropy',
-                  metrics=['accuracy'])
+    model.compile(optimizer='adam', # Optimization algorithm that finds the minimum value of a loss function.
+                  loss='sparse_categorical_crossentropy', # Formula for calculating the error between the answer(integer) and the predicted value(probability).
+                  metrics=['accuracy']) 
 
     model.fit(x_train, y_train, epochs=epochs)
     
     model.save(model_file) 
-    print("학습 및 저장 완료!")
+    print("Learning and Saving complete.")
 
 @dsl.component(
     base_image='tensorflow/tensorflow:2.11.0',
@@ -113,25 +129,30 @@ def evaluate_model(
     y_test_path: dsl.InputPath("Numpy"),
     model_file: dsl.InputPath("Model")
 ) -> float:
+    """
+    :params: model_file: The path to the model folder saved in MinIO in the previous step(train_model) downloaded to the current conatiner.
+    """
     import tensorflow as tf
     import numpy as np
 
     with open(x_test_path, 'rb') as f: x_test = np.load(f)
     with open(y_test_path, 'rb') as f: y_test = np.load(f)
     
-    # 저장된 모델 불러오기 (폴더 형식 자동 인식)
+    # Deserialize model objects into memory from saved files
     model = tf.keras.models.load_model(model_file)
 
-    loss, accuracy = model.evaluate(x_test, y_test)
-    print(f"최종 테스트 정확도: {accuracy}, 손실률: {loss}")
+    loss, accuracy = model.evaluate(x_test, y_test) # Predictions are made by inputting test data into the learned model(forward propagation) and accuracy is calculated by comparing it with the correct answer.
+    print(f"Final test accuracy: {accuracy}")
     
     return float(accuracy)
 
-# ---------------------------------------------------------
-# 파이프라인 연결
-# ---------------------------------------------------------
 @dsl.pipeline(name='Fixed MNIST Pipeline')
 def advanced_pipeline(epochs: int = 5):
+    """
+    task.outputs[...]
+    - Indicates to the KFP comiler that the output of the task will be used as input for the next task.
+    - K8s determines the order in which Pods should run first. 
+    """
     preprocess_task = preprocess_data()
     
     train_task = train_model(
@@ -148,4 +169,4 @@ def advanced_pipeline(epochs: int = 5):
 
 if __name__ == '__main__':
     compiler.Compiler().compile(advanced_pipeline, 'mnist_fixed.yaml')
-    print("파이프라인 생성 완료.")
+    print("Pipeline creation complete.")
